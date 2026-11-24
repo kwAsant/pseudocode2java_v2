@@ -1,0 +1,36 @@
+plugins { id 'java' }
+
+repositories { mavenCentral() }
+
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.12.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'failed'
+        showStandardStreams = true
+    }
+    reports.junitXml.outputPerTestCase = true
+    // The test task prints result trees, so rerun it even when inputs have not changed.
+    outputs.upToDateWhen { false }
+}
+
+tasks.register('lexScratch', JavaExec) {
+    group = 'application'
+    description = 'Inspect OCR tokens, parse an OCR tree or execute it.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'LexerScratch'
+    def pipeline = providers.gradleProperty('scratchPipeline').map { it.toBoolean() }.getOrElse(false)
+    def ocrParse = providers.gradleProperty('scratchParse').map { it.toBoolean() }.getOrElse(false)
+    if (pipeline && ocrParse) throw new GradleException('Choose either scratchPipeline or scratchParse')
+    def scratchFile = providers.gradleProperty('scratchFile').getOrElse('scratch/pseudocode.ocr')
+    if (pipeline) args '--pipeline'
+    if (ocrParse) args '--ocr-parse'
+    args layout.projectDirectory.file(scratchFile).asFile.absolutePath
+}
