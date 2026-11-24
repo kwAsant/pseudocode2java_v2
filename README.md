@@ -1,2 +1,22 @@
 # pseudocode2java_v2
-In an attempt to build my skills in Java, I have decided to work on my Year 13 project. I actually didn't complete it fully, so this will be an attempt to polish it, and get it working properly. I also aim to bring my full technical experience and learning from university and internships to make this an actual system that can be used.
+
+A work-in-progress project for processing OCR J277 pseudocode, with the longer-term aim of generating Java. It does not yet generate Java.
+
+## Progress
+
+- The lexer recognises tokens and reports source locations, comments and diagnostics.
+- A Gradle build and tests are in place.
+- The AST and parser support some statements and expressions; unsupported or unresolved syntax is retained as tokens. Parsing and semantic analysis are incomplete.
+
+See the [lexical rules](docs/lexical-rules.md) and [parser and semantic findings](docs/parser-semantic-findings.md) for details and open questions.
+
+## Build and test
+
+Install JDK 21, then run:
+
+```sh
+./gradlew build
+./gradlew test
+```
+
+On Windows, use `gradlew.bat`. The wrapper may need network access to download Gradle and dependencies. There is not yet a committed command-line entry point for running a program.
