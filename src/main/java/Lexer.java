@@ -5,7 +5,7 @@ import java.util.Set;
 
 /** Lexer for the documented J277 project dialect. No parsing or type checking. */
 public final class Lexer {
-    public enum Kind { IDENTIFIER, MEMBER, ANNOTATION, NUMBER, STRING, CHARACTER, KEYWORD_FOR, KEYWORD_TO, KEYWORD_STEP, KEYWORD_NEXT, KEYWORD_WHILE, KEYWORD_ENDWHILE, KEYWORD_DO, KEYWORD_UNTIL, KEYWORD_IF, KEYWORD_THEN, KEYWORD_ELSEIF, KEYWORD_ELSE, KEYWORD_ENDIF, KEYWORD_SWITCH, KEYWORD_CASE, KEYWORD_DEFAULT, KEYWORD_ENDSWITCH, KEYWORD_ARRAY, KEYWORD_GLOBAL, KEYWORD_CONST, KEYWORD_FUNCTION, KEYWORD_ENDFUNCTION, KEYWORD_PROCEDURE, KEYWORD_ENDPROCEDURE, KEYWORD_RETURN, KEYWORD_INT, KEYWORD_FLOAT, KEYWORD_STR, KEYWORD_BOOL, KEYWORD_REAL, KEYWORD_STRING, KEYWORD_INTEGER, KEYWORD_BOOLEAN, KEYWORD_TRUE, KEYWORD_FALSE, BUILTIN_PRINT, BUILTIN_INPUT, BUILTIN_RANDOM, BUILTIN_OPEN, BUILTIN_NEWFILE, BUILTIN_ASC, BUILTIN_CHR, OP_MOD, OP_DIV, OP_AND, OP_OR, OP_NOT, OP_ASSIGN, OP_EQ, OP_NE, OP_LT, OP_LE, OP_GT, OP_GE, OP_PLUS, OP_MINUS, OP_MULTIPLY, OP_DIVIDE, OP_POWER, LPAREN, RPAREN, LBRACKET, RBRACKET, LBRACE, RBRACE, COMMA, COLON, DOT, NEWLINE }
+    public enum Kind { IDENTIFIER, MEMBER, ANNOTATION, NUMBER, STRING, CHARACTER, KEYWORD_FOR, KEYWORD_TO, KEYWORD_STEP, KEYWORD_NEXT, KEYWORD_WHILE, KEYWORD_ENDWHILE, KEYWORD_DO, KEYWORD_UNTIL, KEYWORD_IF, KEYWORD_THEN, KEYWORD_ELSEIF, KEYWORD_ELSE, KEYWORD_ENDIF, KEYWORD_SWITCH, KEYWORD_CASE, KEYWORD_DEFAULT, KEYWORD_ENDSWITCH, KEYWORD_BREAK, KEYWORD_ARRAY, KEYWORD_GLOBAL, KEYWORD_CONST, KEYWORD_FUNCTION, KEYWORD_ENDFUNCTION, KEYWORD_PROCEDURE, KEYWORD_ENDPROCEDURE, KEYWORD_RETURN, KEYWORD_INT, KEYWORD_FLOAT, KEYWORD_STR, KEYWORD_BOOL, KEYWORD_REAL, KEYWORD_STRING, KEYWORD_INTEGER, KEYWORD_BOOLEAN, KEYWORD_TRUE, KEYWORD_FALSE, BUILTIN_PRINT, BUILTIN_INPUT, BUILTIN_RANDOM, BUILTIN_OPEN, BUILTIN_NEWFILE, BUILTIN_ASC, BUILTIN_CHR, OP_MOD, OP_DIV, OP_AND, OP_OR, OP_XOR, OP_NOT, OP_ASSIGN, OP_EQ, OP_NE, OP_LT, OP_LE, OP_GT, OP_GE, OP_PLUS, OP_MINUS, OP_MULTIPLY, OP_DIVIDE, OP_POWER, LPAREN, RPAREN, LBRACKET, RBRACKET, LBRACE, RBRACE, COMMA, COLON, DOT, NEWLINE }
     public enum Severity { WARNING, ERROR }
     public record Position(int offset, int line, int column) {}
     public record Span(Position start, Position end) {}
@@ -14,14 +14,15 @@ public final class Lexer {
     }
     public record Diagnostic(Severity severity, String category, String message, Span span) {}
     public record Trivia(String text, Span span) {}
-    public record Result(List<Token> tokens, List<Trivia> trivia, List<Diagnostic> diagnostics) {
+    public record Result(List<Token> tokens, List<Trivia> trivia, List<Diagnostic> diagnostics, Position end) {
         public boolean hasErrors() { return diagnostics.stream().anyMatch(d -> d.severity == Severity.ERROR); }
     }
     private enum State { DEFAULT, STRING, CHARACTER, COMMENT }
-    private static final Set<String> KEYWORDS = Set.of("for", "to", "step", "next", "while", "endwhile", "do", "until", "if", "then", "elseif", "else", "endif", "switch", "case", "default", "endswitch", "array", "global", "const", "function", "endfunction", "procedure", "endprocedure", "return", "int", "float", "str", "bool", "real", "string", "integer", "boolean", "true", "false");
+    private static final Set<String> KEYWORDS = Set.of("for", "to", "step", "next", "while", "endwhile", "do", "until", "if", "then", "elseif", "else", "endif", "switch", "case", "default", "endswitch", "break", "array", "global", "const", "function", "endfunction", "procedure", "endprocedure", "return", "int", "float", "str", "bool", "real", "string", "integer", "boolean", "true", "false");
     private static final Set<String> BUILTINS = Set.of("print", "input", "random", "open", "newfile", "asc", "chr");
-    private static final Set<String> WORD_OPS = Set.of("mod", "div", "and", "or", "not");
-    private static final Set<String> MEMBERS = Set.of("length", "substring", "left", "right", "upper", "lower", "close", "readLine", "writeLine", "endOfFile");
+    private static final Set<String> WORD_OPS = Set.of("mod", "div", "and", "or", "xor", "not");
+    private static final Set<String> MEMBERS = Set.of("length", "substring", "subString", "left", "right", "upper", "lower", "close", "readLine", "writeLine", "endOfFile");
+    private static final Set<String> LEGACY_FILE_METHODS = Set.of("openRead", "openWrite");
     private static final Set<String> ANNOTATIONS = Set.of("byVal", "byRef");
     private static boolean letter(char c) { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'; }
     private static boolean digit(char c) { return c >= '0' && c <= '9'; }
@@ -58,7 +59,7 @@ public final class Lexer {
                 if (c == ' ' || c == '\t') { advance(); continue; }
                 if (c == '\r' || c == '\n') { advance(); token(Kind.NEWLINE, p, null); continue; }
                 if (c == '/' && i + 1 < s.length() && s.charAt(i + 1) == '/') { comment(p); continue; }
-                if (c == '"' || c == '\'') { literal(p, c); continue; }
+                if (c == '"' || c == '\'' || c == '“' || c == '”' || c == '‘') { literal(p, c); continue; }
                 if (digit(c) || c == '.' && i + 1 < s.length() && digit(s.charAt(i + 1))) { numberOrName(p); continue; }
                 if (letter(c) || c == '_') { word(p); continue; }
                 if ("=<>!".indexOf(c) >= 0) {
@@ -71,7 +72,7 @@ public final class Lexer {
                     if (op.equals("!")) diagnostic(Severity.ERROR, "unknown-symbol", "Unsupported operator", span(p)); else token(switch (op) { case "=" -> Kind.OP_ASSIGN; case "==" -> Kind.OP_EQ; case "!=" -> Kind.OP_NE; case "<" -> Kind.OP_LT; case "<=" -> Kind.OP_LE; case ">" -> Kind.OP_GT; case ">=" -> Kind.OP_GE; default -> throw new IllegalStateException(op); }, p, null);
                     continue;
                 }
-                if ("+-*/^".indexOf(c) >= 0) { advance(); token(switch (c) { case '+' -> Kind.OP_PLUS; case '-' -> Kind.OP_MINUS; case '*' -> Kind.OP_MULTIPLY; case '/' -> Kind.OP_DIVIDE; case '^' -> Kind.OP_POWER; default -> throw new IllegalStateException(); }, p, null); continue; }
+                if ("+-*/^–—".indexOf(c) >= 0) { advance(); token(switch (c) { case '+' -> Kind.OP_PLUS; case '-', '–', '—' -> Kind.OP_MINUS; case '*' -> Kind.OP_MULTIPLY; case '/' -> Kind.OP_DIVIDE; case '^' -> Kind.OP_POWER; default -> throw new IllegalStateException(); }, p, null); continue; }
                 Kind punctuation = switch (c) {
                     case '(' -> Kind.LPAREN;
                     case ')' -> Kind.RPAREN;
@@ -88,7 +89,7 @@ public final class Lexer {
                 advance(); diagnostic(Severity.ERROR, "unknown-symbol", "Unknown symbol", span(p));
             }
             if (mod && div != null) diagnostic(Severity.WARNING, "mixed-operator-case", "Lowercase mod and uppercase DIV occur together", div);
-            return new Result(List.copyOf(tokens), List.copyOf(trivia), List.copyOf(diagnostics));
+            return new Result(List.copyOf(tokens), List.copyOf(trivia), List.copyOf(diagnostics), pos());
         }
         private void comment(Position p) {
             state = State.COMMENT; advance(); advance();
@@ -96,10 +97,12 @@ public final class Lexer {
             trivia.add(new Trivia(s.substring(p.offset(), i), span(p))); state = State.DEFAULT;
         }
         private void literal(Position p, char quote) {
-            state = quote == '"' ? State.STRING : State.CHARACTER; advance(); StringBuilder value = new StringBuilder(); boolean closed = false;
+            boolean string = quote == '"' || quote == '“' || quote == '”';
+            char closingQuote = quote == '“' ? '”' : quote == '‘' ? '’' : quote;
+            state = string ? State.STRING : State.CHARACTER; advance(); StringBuilder value = new StringBuilder(); boolean closed = false;
             while (i < s.length()) {
                 char c = s.charAt(i);
-                if (c == quote) { advance(); closed = true; break; }
+                if (c == closingQuote) { advance(); closed = true; break; }
                 if (c == '\\') {
                     advance(); if (i == s.length()) break; char e = s.charAt(i); advance();
                     switch (e) { case 'n' -> value.append('\n'); case 't' -> value.append('\t'); case 'r' -> value.append('\r'); case '\\', '\'', '"' -> value.append(e); default -> { diagnostic(Severity.ERROR, "invalid-escape", "Unsupported escape", span(p)); state = State.DEFAULT; return; } }
@@ -110,8 +113,8 @@ public final class Lexer {
                 }
             }
             if (!closed) diagnostic(Severity.ERROR, "unterminated-string", "Unterminated literal", span(p));
-            else if (quote == '\'' && value.codePointCount(0, value.length()) != 1) diagnostic(Severity.ERROR, "invalid-character", "Character literal must contain one character", span(p));
-            else token(quote == '"' ? Kind.STRING : Kind.CHARACTER, p, value.toString());
+            else if (!string && value.codePointCount(0, value.length()) != 1) diagnostic(Severity.ERROR, "invalid-character", "Character literal must contain one character", span(p));
+            else token(string ? Kind.STRING : Kind.CHARACTER, p, value.toString());
             state = State.DEFAULT;
         }
         private void word(Position p) {
@@ -126,6 +129,8 @@ public final class Lexer {
             String lower = text.toLowerCase(Locale.ROOT); Kind kind = Kind.IDENTIFIER;
             boolean afterDot = !tokens.isEmpty() && tokens.get(tokens.size()-1).kind() == Kind.DOT;
             if (ANNOTATIONS.contains(text)) kind = Kind.ANNOTATION;
+            else if (text.equals("Array")) kind = Kind.KEYWORD_ARRAY;
+            else if (LEGACY_FILE_METHODS.contains(text)) kind = Kind.MEMBER;
             else if (afterDot && MEMBERS.contains(text)) kind = Kind.MEMBER;
             else if (uniform(text) && WORD_OPS.contains(lower)) kind = Kind.valueOf("OP_" + lower.toUpperCase(Locale.ROOT));
             else if (uniform(text) && BUILTINS.contains(lower)) kind = Kind.valueOf("BUILTIN_" + lower.toUpperCase(Locale.ROOT));
@@ -146,9 +151,8 @@ public final class Lexer {
             if (i < s.length() && letter(s.charAt(i))) {
                 if (s.startsWith("MOD", i) || s.startsWith("DIV", i) || s.startsWith("mod", i) || s.startsWith("div", i)) { /* scan operator next */ }
                 else {
-                    String prefix = s.substring(p.offset(), i);
                     while (i < s.length() && name(s.charAt(i))) advance();
-                    if (prefix.matches("[0-9]+\\.[0-9]+"))
+                    if (dot)
                         diagnostic(Severity.ERROR, "invalid-number", "A decimal followed by letters cannot be a variable name", span(p));
                     else token(Kind.IDENTIFIER, p, null);
                     return;

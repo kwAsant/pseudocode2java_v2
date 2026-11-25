@@ -12,6 +12,82 @@ import org.junit.jupiter.api.Test;
 import java.util.Locale;
 
 class LexerTest {
+    @Test void recognisesSwitchKeywordsAndLabels() {
+        String input = "switch day:\ncase \"Sat\":\nbreak\ndefault:\nendswitch";
+        var result = new Lexer().scan(input);
+        report(input, "switch, case, default and endswitch tokens; no errors", result);
+        assertFalse(result.hasErrors());
+        assertEquals(List.of(Lexer.Kind.KEYWORD_SWITCH, Lexer.Kind.IDENTIFIER, Lexer.Kind.COLON, Lexer.Kind.NEWLINE,
+                Lexer.Kind.KEYWORD_CASE, Lexer.Kind.STRING, Lexer.Kind.COLON, Lexer.Kind.NEWLINE, Lexer.Kind.KEYWORD_BREAK, Lexer.Kind.NEWLINE,
+                Lexer.Kind.KEYWORD_DEFAULT, Lexer.Kind.COLON, Lexer.Kind.NEWLINE, Lexer.Kind.KEYWORD_ENDSWITCH),
+                result.tokens().stream().map(Lexer.Token::kind).toList());
+    }
+    @Test void j276ArrayCaseIsRecognisedWithoutChangingOtherCasing() {
+        String input = "Array array ARRAY aRray";
+        var result = new Lexer().scan(input);
+        report(input, "three array keywords and one identifier", result);
+        assertFalse(result.hasErrors());
+        assertEquals(List.of(Lexer.Kind.KEYWORD_ARRAY, Lexer.Kind.KEYWORD_ARRAY, Lexer.Kind.KEYWORD_ARRAY, Lexer.Kind.IDENTIFIER), result.tokens().stream().map(Lexer.Token::kind).toList());
+        assertEquals(List.of("Array", "array", "ARRAY", "aRray"), result.tokens().stream().map(Lexer.Token::text).toList());
+    }
+
+    @Test void j276FileMethodsAreNotIdentifiers() {
+        String input = "openRead(\"a\") openWrite(\"b\") openread(\"c\")";
+        var result = new Lexer().scan(input);
+        report(input, "exact-case openRead and openWrite are members; openread remains an identifier", result);
+        assertFalse(result.hasErrors());
+        assertEquals(List.of(Lexer.Kind.MEMBER, Lexer.Kind.MEMBER, Lexer.Kind.IDENTIFIER), result.tokens().stream().filter(t -> t.text().startsWith("open")).map(Lexer.Token::kind).toList());
+    }
+
+    @Test void j276AndJ277SubstringSpellingsAreMembers() {
+        String input = "s.subString(3,3) s.substring(3,3) s.SUBSTRING(3,3)";
+        var result = new Lexer().scan(input);
+        report(input, "both documented spellings are members; uppercase remains an identifier", result);
+        assertFalse(result.hasErrors());
+        assertEquals(List.of(Lexer.Kind.MEMBER, Lexer.Kind.MEMBER, Lexer.Kind.IDENTIFIER), result.tokens().stream().filter(t -> t.text().equalsIgnoreCase("substring")).map(Lexer.Token::kind).toList());
+    }
+    @Test void copiedGuideRightCurlyQuotesAreStringDelimiters() {
+        String input = "name=”Bob”\nwhile answer!=”computer”\nendwhile";
+        var result = new Lexer().scan(input);
+        report(input, "two strings with preserved spelling and no errors", result);
+        assertFalse(result.hasErrors());
+        var strings = result.tokens().stream().filter(t -> t.kind() == Lexer.Kind.STRING).toList();
+        assertEquals(List.of("”Bob”", "”computer”"), strings.stream().map(Lexer.Token::text).toList());
+        assertEquals(List.of("Bob", "computer"), strings.stream().map(Lexer.Token::value).toList());
+        assertEquals(new Lexer.Position(5, 1, 6), strings.getFirst().span().start());
+        assertEquals(new Lexer.Position(10, 1, 11), strings.getFirst().span().end());
+    }
+    @Test void smartQuotesAndDashesPreserveSourceAndLiteralValues() {
+        var result = new Lexer().scan("“Hello — world” ‘a’ 5–2 5—2 \"Hello\" 'a'");
+        assertFalse(result.hasErrors(), () -> result.diagnostics().toString());
+        assertEquals(List.of(Lexer.Kind.STRING, Lexer.Kind.CHARACTER, Lexer.Kind.NUMBER, Lexer.Kind.OP_MINUS,
+                Lexer.Kind.NUMBER, Lexer.Kind.NUMBER, Lexer.Kind.OP_MINUS, Lexer.Kind.NUMBER,
+                Lexer.Kind.STRING, Lexer.Kind.CHARACTER), result.tokens().stream().map(Lexer.Token::kind).toList());
+        assertEquals("“Hello — world”", result.tokens().get(0).text());
+        assertEquals("Hello — world", result.tokens().get(0).value());
+        assertEquals("‘a’", result.tokens().get(1).text());
+        assertEquals("a", result.tokens().get(1).value());
+        assertEquals("–", result.tokens().get(3).text());
+        assertEquals("—", result.tokens().get(6).text());
+        assertEquals("Hello", result.tokens().get(8).value());
+        assertEquals("a", result.tokens().get(9).value());
+    }
+    @ParameterizedTest(name = "decimal-prefixed name {0}")
+    @org.junit.jupiter.params.provider.ValueSource(strings = {".5name", "1.name", "1_2.3name"})
+    void decimalPrefixedNameIsAFullLexicalError(String malformed) {
+        String input = "x = " + malformed + "\nprint(1)";
+        var result = new Lexer().scan(input);
+        report(input, "invalid-number covering " + malformed + "; scanning stops", result);
+        assertEquals(List.of("x", "="), result.tokens().stream().map(Lexer.Token::text).toList());
+        assertEquals(1, result.diagnostics().size());
+        var diagnostic = result.diagnostics().getFirst();
+        assertEquals(Lexer.Severity.ERROR, diagnostic.severity());
+        assertEquals("invalid-number", diagnostic.category());
+        assertEquals(new Lexer.Position(4, 1, 5), diagnostic.span().start());
+        assertEquals(new Lexer.Position(4 + malformed.length(), 1, 5 + malformed.length()), diagnostic.span().end());
+        assertTrue(result.hasErrors());
+    }
+
     @Test void decimalWithAlphabeticSuffixIsNotAnIdentifier() {
         String input = "x = 1.2abc\nprint(1)";
         var result = new Lexer().scan(input);
@@ -83,7 +159,7 @@ class LexerTest {
             new Case("comment at EOF", "// note", "// note", r -> r.trivia().getFirst().text()),
             new Case("comment marker inside string", "\"A//B\"", true, r -> r.trivia().isEmpty()),
             new Case("byte order mark", "\ufeffx=1", List.of("x", "=", "1"), r -> r.tokens().stream().map(Lexer.Token::text).toList()),
-            new Case("typographic quotes", "“hello”", List.of("unknown-symbol"), LexerTest::errors),
+            new Case("typographic quotes", "“hello”", "hello", r -> r.tokens().getFirst().value()),
             new Case("error line and column", "x=1\n@", List.of(2, 1), r -> List.of(r.diagnostics().getFirst().span().start().line(), r.diagnostics().getFirst().span().start().column())),
             new Case("CRLF string has no errors", "\"first\r\nsecond\"", false, Lexer.Result::hasErrors),
             new Case("CRLF string value", "\"first\r\nsecond\"", "first\r\nsecond", r -> r.tokens().getFirst().value()),
@@ -121,7 +197,8 @@ class LexerTest {
         return Stream.of(words).flatMap(word -> {
             var expected = Lexer.Kind.valueOf(prefix + word.toUpperCase(Locale.ROOT));
             String mixed = Character.toUpperCase(word.charAt(0)) + word.substring(1);
-            return Stream.of(Arguments.of(word, expected), Arguments.of(word.toUpperCase(Locale.ROOT), expected), Arguments.of(mixed, Lexer.Kind.IDENTIFIER));
+            var mixedKind = mixed.equals("Array") ? Lexer.Kind.KEYWORD_ARRAY : Lexer.Kind.IDENTIFIER;
+            return Stream.of(Arguments.of(word, expected), Arguments.of(word.toUpperCase(Locale.ROOT), expected), Arguments.of(mixed, mixedKind));
         });
     }
 
