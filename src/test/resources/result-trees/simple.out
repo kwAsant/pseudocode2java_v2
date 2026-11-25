@@ -1,0 +1,8 @@
+5
+Result tree:
+|-- assign x
+|   \-- literal = 2
+\-- print
+    \-- binary + = 5
+        |-- variable x = 2
+        \-- literal = 3

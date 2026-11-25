@@ -1,0 +1,4 @@
+x = 1
+print(x)
+print(4 / 0)
+print(9)

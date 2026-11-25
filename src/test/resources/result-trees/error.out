@@ -1,0 +1,10 @@
+1
+Result tree:
+|-- assign x
+|   \-- literal = 1
+|-- print
+|   \-- variable x = 1
+\-- print [aborted]
+    \-- binary / [error: Line 3, column 9: Division by zero]
+        |-- literal = 4
+        \-- literal = 0

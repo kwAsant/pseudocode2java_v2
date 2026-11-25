@@ -1,0 +1,37 @@
+0
+11
+Result tree:
+|-- assign x
+|   \-- literal = 0
+\-- while
+    |-- binary < = true
+    |   |-- variable x = 0
+    |   \-- literal = 2
+    |-- if
+    |   |-- binary == = true
+    |   |   |-- variable x = 0
+    |   |   \-- literal = 0
+    |   \-- print
+    |       \-- variable x = 0
+    |-- assign x
+    |   \-- binary + = 1
+    |       |-- variable x = 0
+    |       \-- literal = 1
+    |-- binary < = true
+    |   |-- variable x = 1
+    |   \-- literal = 2
+    |-- if
+    |   |-- binary == = false
+    |   |   |-- variable x = 1
+    |   |   \-- literal = 0
+    |   \-- print
+    |       \-- binary + = 11
+    |           |-- variable x = 1
+    |           \-- literal = 10
+    |-- assign x
+    |   \-- binary + = 2
+    |       |-- variable x = 1
+    |       \-- literal = 1
+    \-- binary < = false
+        |-- variable x = 2
+        \-- literal = 2
