@@ -1,0 +1,4 @@
+// Try changing these values and operators.
+x=007
+y=.5
+print(x+y)
